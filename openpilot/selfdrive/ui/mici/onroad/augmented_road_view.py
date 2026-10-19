@@ -63,9 +63,26 @@ class BookmarkIcon(Widget):
     self._triggered_duration = 1.5
     self._swipe_expired = False
 
-  def is_swiping_left(self) -> bool:
-    """Check if currently swiping left (for scroller to disable)."""
-    return self._is_swiping_left
+  def is_gesture_claimed(self) -> bool:
+    """Whether this widget owns the current gesture and the parent scroller must not scroll.
+
+    Claims only leftward drags (the bookmark gesture), so rightward swipes still scroll
+    the parent scroller. Our own mouse event handling runs after the parent scroller
+    within a frame, so leftward drags are also detected directly from the current
+    frame's raw events: otherwise a fast press+drag in a single frame batch would move
+    the scroller before we could claim the gesture (commaai/openpilot#38934).
+    """
+    if not ui_state.started:
+      return False
+    if self._is_swiping and self._is_swiping_left:
+      return True
+    press_x = None
+    for mouse_event in gui_app.mouse_events:
+      if mouse_event.left_pressed and rl.check_collision_point_rec(mouse_event.pos, self._hit_rect):
+        press_x = mouse_event.pos.x
+      elif press_x is not None and mouse_event.left_down and mouse_event.pos.x < press_x:
+        return True
+    return False
 
   def interacting(self):
     interacting, self._interacting = self._interacting, False
@@ -184,9 +201,9 @@ class AugmentedRoadView(CameraView):
 
     self._fade_texture = gui_app.texture("icons_mici/onroad/onroad_fade.png")
 
-  def is_swiping_left(self) -> bool:
-    """Check if currently swiping left (for scroller to disable)."""
-    return self._bookmark_icon.is_swiping_left()
+  def is_gesture_claimed(self) -> bool:
+    """Whether the bookmark icon has claimed the current gesture (for scroller to disable)."""
+    return self._bookmark_icon.is_gesture_claimed()
 
   def _update_state(self):
     super()._update_state()
